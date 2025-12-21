@@ -16,7 +16,7 @@ const pool = new Pool({
 });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const UNBIND_COOLDOWN_DAYS = 7;
+const UNBIND_COOLDOWN_MINUTES = 5;
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -364,8 +364,9 @@ app.post('/licenses/unbind', authenticateToken, async (req, res) => {
       [license_key.toUpperCase()]
     );
 
-    const nextAllowedDate = new Date();
-    nextAllowedDate.setDate(nextAllowedDate.getDate() + UNBIND_COOLDOWN_DAYS);
+    // Set cooldown
+const nextAllowedDate = new Date();
+nextAllowedDate.setMinutes(nextAllowedDate.getMinutes() + UNBIND_COOLDOWN_MINUTES);
 
     await pool.query(
       `INSERT INTO cooldowns (license_key, last_unbind, next_allowed_unbind)
