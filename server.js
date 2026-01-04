@@ -8,6 +8,21 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
+
+// CORS Configuration - Allow requests from your Netlify domain
+const cors = require('cors');
+app.use(cors({
+  origin: [
+    'https://illustrious-figolla-65c203.netlify.app',
+    'http://localhost:3000',
+    'http://localhost:5000',
+    /\.netlify\.app$/  // Allow all Netlify domains
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 const pool = new Pool({
@@ -75,6 +90,7 @@ async function initializeDatabase() {
         id SERIAL PRIMARY KEY,
         email VARCHAR(255) UNIQUE NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
+        name VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -117,16 +133,16 @@ async function initializeDatabase() {
   }
 }
 
-app.post('/auth/register', authLimiter, async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, name } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password required' });
+      return res.status(400).json({ message: 'Email and password required' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
     const existingUser = await pool.query(
@@ -135,14 +151,14 @@ app.post('/auth/register', authLimiter, async (req, res) => {
     );
 
     if (existingUser.rows.length > 0) {
-      return res.status(409).json({ error: 'Email already registered' });
+      return res.status(409).json({ message: 'Email already registered' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
-      'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
-      [email.toLowerCase(), passwordHash]
+      'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name, created_at',
+      [email.toLowerCase(), passwordHash, name || email.split('@')[0]]
     );
 
     const user = result.rows[0];
@@ -150,53 +166,53 @@ app.post('/auth/register', authLimiter, async (req, res) => {
 
     res.json({
       success: true,
-      user: { id: user.id, email: user.email },
+      user: { id: user.id, email: user.email, name: user.name },
       token
     });
   } catch (err) {
     console.error('Registration error:', err);
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ message: 'Registration failed' });
   }
 });
 
-app.post('/auth/login', authLimiter, async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password required' });
+      return res.status(400).json({ message: 'Email and password required' });
     }
 
     const result = await pool.query(
-      'SELECT id, email, password_hash FROM users WHERE email = $1',
+      'SELECT id, email, name, password_hash FROM users WHERE email = $1',
       [email.toLowerCase()]
     );
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const user = result.rows[0];
 
     const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const token = generateToken(user.id);
 
     res.json({
       success: true,
-      user: { id: user.id, email: user.email },
+      user: { id: user.id, email: user.email, name: user.name },
       token
     });
   } catch (err) {
     console.error('Login error:', err);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ message: 'Login failed' });
   }
 });
 
-app.post('/validate', apiLimiter, async (req, res) => {
+app.post('/api/validate', apiLimiter, async (req, res) => {
   try {
     const { license_key, account_number, platform, broker } = req.body;
 
@@ -284,11 +300,12 @@ app.post('/validate', apiLimiter, async (req, res) => {
   }
 });
 
-app.get('/licenses', authenticateToken, async (req, res) => {
+app.get('/api/licenses/user/:userId', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT license_key, status, platform, account_number, broker, 
-              bound_at, last_validated, expires_at, created_at
+      `SELECT license_key, status, platform, account_number as bound_account, broker, 
+              bound_at, last_validated, expires_at, created_at,
+              CASE WHEN status = 'active' THEN true ELSE false END as is_active
        FROM licenses 
        WHERE user_id = $1 
        ORDER BY created_at DESC`,
@@ -304,7 +321,7 @@ app.get('/licenses', authenticateToken, async (req, res) => {
 
         return {
           ...license,
-          cooldown: cooldown.rows.length > 0 ? cooldown.rows[0] : null
+          last_unbind_time: cooldown.rows.length > 0 ? cooldown.rows[0].last_unbind : null
         };
       })
     );
@@ -315,11 +332,11 @@ app.get('/licenses', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Get licenses error:', err);
-    res.status(500).json({ error: 'Failed to retrieve licenses' });
+    res.status(500).json({ message: 'Failed to retrieve licenses' });
   }
 });
 
-app.post('/licenses/unbind', authenticateToken, async (req, res) => {
+app.post('/api/licenses/unbind', authenticateToken, async (req, res) => {
   try {
     const { license_key } = req.body;
 
@@ -351,7 +368,7 @@ app.post('/licenses/unbind', authenticateToken, async (req, res) => {
       const nextAllowed = new Date(cooldownResult.rows[0].next_allowed_unbind);
       if (nextAllowed > new Date()) {
         return res.status(429).json({ 
-          error: 'Cooldown active',
+          message: 'Cooldown active. Please wait before unbinding again.',
           next_allowed: nextAllowed
         });
       }
