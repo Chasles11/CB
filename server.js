@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
+const nodemailer = require('nodemailer');
 
 const app = express();
 
@@ -32,6 +33,17 @@ const pool = new Pool({
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const UNBIND_COOLDOWN_MINUTES = 5;
+
+// Email Configuration
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER || 'mychallengebuddy@gmail.com',
+    pass: process.env.EMAIL_PASS || 'kndq hbsp obml uqal'
+  }
+});
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://illustrious-figolla-65c203.netlify.app';
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -124,8 +136,18 @@ async function initializeDatabase() {
         next_allowed_unbind TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS reset_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        token VARCHAR(255) UNIQUE NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE INDEX IF NOT EXISTS idx_licenses_user ON licenses(user_id);
       CREATE INDEX IF NOT EXISTS idx_activations_license ON activations(license_key);
+      CREATE INDEX IF NOT EXISTS idx_reset_tokens_token ON reset_tokens(token);
     `);
     console.log('Database initialized successfully');
   } finally {
@@ -209,6 +231,129 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ message: 'Login failed' });
+  }
+});
+
+// Forgot Password - Send reset email
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email required' });
+    }
+
+    const userResult = await pool.query(
+      'SELECT id, email, name FROM users WHERE email = $1',
+      [email.toLowerCase()]
+    );
+
+    // Always return success even if email doesn't exist (security best practice)
+    if (userResult.rows.length === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'If that email exists, a reset link has been sent' 
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 1); // Token expires in 1 hour
+
+    // Save token to database
+    await pool.query(
+      'INSERT INTO reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+      [user.id, resetToken, expiresAt]
+    );
+
+    // Send email
+    const resetLink = `${FRONTEND_URL}?reset_token=${resetToken}`;
+    
+    await transporter.sendMail({
+      from: '"Challenge Buddy" <mychallengebuddy@gmail.com>',
+      to: user.email,
+      subject: 'Reset Your Challenge Buddy Password',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1877f2;">Reset Your Password</h2>
+          <p>Hi ${user.name || 'there'},</p>
+          <p>We received a request to reset your Challenge Buddy password.</p>
+          <p>Click the button below to reset your password:</p>
+          <div style="margin: 30px 0;">
+            <a href="${resetLink}" style="background-color: #1877f2; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a>
+          </div>
+          <p>Or copy and paste this link into your browser:</p>
+          <p style="color: #666; word-break: break-all;">${resetLink}</p>
+          <p style="color: #999; font-size: 14px;">This link will expire in 1 hour.</p>
+          <p style="color: #999; font-size: 14px;">If you didn't request this, please ignore this email.</p>
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+          <p style="color: #999; font-size: 12px;">Challenge Buddy - License Management</p>
+        </div>
+      `
+    });
+
+    console.log(`Password reset email sent to user ID: ${user.id}`);
+
+    res.json({ 
+      success: true, 
+      message: 'Password reset link sent to your email' 
+    });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(500).json({ message: 'Failed to process request' });
+  }
+});
+
+// Reset Password - Actually change the password
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
+  try {
+    const { token, new_password } = req.body;
+
+    if (!token || !new_password) {
+      return res.status(400).json({ message: 'Token and new password required' });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    // Verify token
+    const tokenResult = await pool.query(
+      'SELECT * FROM reset_tokens WHERE token = $1 AND used = FALSE AND expires_at > NOW()',
+      [token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    const resetToken = tokenResult.rows[0];
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(new_password, 10);
+
+    // Update user password
+    await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE id = $2',
+      [passwordHash, resetToken.user_id]
+    );
+
+    // Mark token as used
+    await pool.query(
+      'UPDATE reset_tokens SET used = TRUE WHERE id = $1',
+      [resetToken.id]
+    );
+
+    res.json({ 
+      success: true, 
+      message: 'Password reset successful' 
+    });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    res.status(500).json({ message: 'Failed to reset password' });
   }
 });
 
