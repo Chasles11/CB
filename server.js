@@ -26,6 +26,9 @@ app.use(cors({
 
 app.use(express.json());
 
+// Trust proxy - required for Railway/production
+app.set('trust proxy', 1);
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
@@ -34,12 +37,17 @@ const pool = new Pool({
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const UNBIND_COOLDOWN_MINUTES = 5;
 
-// Email Configuration
+// Email Configuration - Using explicit SMTP settings for Railway compatibility
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // Use TLS
   auth: {
     user: process.env.EMAIL_USER || 'mychallengebuddy@gmail.com',
-    pass: process.env.EMAIL_PASS || 'kndq hbsp obml uqal'
+    pass: process.env.EMAIL_PASS || 'kndqhbspobmluqal'
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
