@@ -39,13 +39,14 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 const UNBIND_COOLDOWN_MINUTES = 5;
 
 // Email Configuration - Using explicit SMTP settings for Railway compatibility
+// IMPORTANT: Set EMAIL_USER and EMAIL_PASS as environment variables in Railway!
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false, // Use TLS
   auth: {
-    user: process.env.EMAIL_USER || 'mychallengebuddy@gmail.com',
-    pass: process.env.EMAIL_PASS || 'kndqhbspobmluqal'
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   },
   tls: {
     rejectUnauthorized: false
