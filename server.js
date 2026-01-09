@@ -15,6 +15,7 @@ const cors = require('cors');
 app.use(cors({
   origin: [
     'https://illustrious-figolla-65c203.netlify.app',
+    'https://wondrous-llama-6502de.netlify.app',  // New Netlify URL
     'http://localhost:3000',
     'http://localhost:5000',
     /\.netlify\.app$/  // Allow all Netlify domains
@@ -51,7 +52,7 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://illustrious-figolla-65c203.netlify.app';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://wondrous-llama-6502de.netlify.app';
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
