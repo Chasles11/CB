@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const app = express();
 
@@ -38,20 +38,8 @@ const pool = new Pool({
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const UNBIND_COOLDOWN_MINUTES = 5;
 
-// Email Configuration - Using explicit SMTP settings for Railway compatibility
-// IMPORTANT: Set EMAIL_USER and EMAIL_PASS as environment variables in Railway!
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use TLS
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  },
-  tls: {
-    rejectUnauthorized: false
-  }
-});
+// Email Configuration - Using Resend (Railway-friendly)
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://wondrous-llama-6502de.netlify.app';
 
@@ -279,11 +267,11 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
       [user.id, resetToken, expiresAt]
     );
 
-    // Send email
+    // Send email with Resend
     const resetLink = `${FRONTEND_URL}?reset_token=${resetToken}`;
     
-    await transporter.sendMail({
-      from: '"Challenge Buddy" <mychallengebuddy@gmail.com>',
+    await resend.emails.send({
+      from: 'Challenge Buddy <onboarding@resend.dev>',
       to: user.email,
       subject: 'Reset Your Challenge Buddy Password',
       html: `
