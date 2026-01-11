@@ -39,6 +39,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 const UNBIND_COOLDOWN_MINUTES = 5;
 
 // Email Configuration - Using Resend (Railway-friendly)
+if (!process.env.RESEND_API_KEY) {
+  console.error('❌ ERROR: RESEND_API_KEY environment variable is not set!');
+  console.error('Please add RESEND_API_KEY to Railway Variables');
+  process.exit(1);
+}
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://wondrous-llama-6502de.netlify.app';
@@ -50,7 +55,8 @@ const apiLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5
+  max: 20, // Increased from 5 to 20
+  message: { message: 'Too many attempts, please try again in 15 minutes' }
 });
 
 function generateLicenseKey() {
@@ -270,30 +276,35 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
     // Send email with Resend
     const resetLink = `${FRONTEND_URL}?reset_token=${resetToken}`;
     
-    await resend.emails.send({
-      from: 'Challenge Buddy <onboarding@resend.dev>',
-      to: user.email,
-      subject: 'Reset Your Challenge Buddy Password',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #1877f2;">Reset Your Password</h2>
-          <p>Hi ${user.name || 'there'},</p>
-          <p>We received a request to reset your Challenge Buddy password.</p>
-          <p>Click the button below to reset your password:</p>
-          <div style="margin: 30px 0;">
-            <a href="${resetLink}" style="background-color: #1877f2; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a>
+    try {
+      await resend.emails.send({
+        from: 'ChallengeBuddy <onboarding@resend.dev>',
+        to: user.email,
+        subject: 'Reset Your ChallengeBuddy Password',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1877f2;">Reset Your Password</h2>
+            <p>Hi ${user.name || 'there'},</p>
+            <p>We received a request to reset your ChallengeBuddy password.</p>
+            <p>Click the button below to reset your password:</p>
+            <div style="margin: 30px 0;">
+              <a href="${resetLink}" style="background-color: #1877f2; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a>
+            </div>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style="color: #666; word-break: break-all;">${resetLink}</p>
+            <p style="color: #999; font-size: 14px;">This link will expire in 1 hour.</p>
+            <p style="color: #999; font-size: 14px;">If you didn't request this, please ignore this email.</p>
+            <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+            <p style="color: #999; font-size: 12px;">ChallengeBuddy - License Management</p>
           </div>
-          <p>Or copy and paste this link into your browser:</p>
-          <p style="color: #666; word-break: break-all;">${resetLink}</p>
-          <p style="color: #999; font-size: 14px;">This link will expire in 1 hour.</p>
-          <p style="color: #999; font-size: 14px;">If you didn't request this, please ignore this email.</p>
-          <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-          <p style="color: #999; font-size: 12px;">Challenge Buddy - License Management</p>
-        </div>
-      `
-    });
-
-    console.log(`Password reset email sent to user ID: ${user.id}`);
+        `
+      });
+      
+      console.log(`Password reset email sent to user ID: ${user.id}`);
+    } catch (emailError) {
+      console.error('Resend email error:', emailError);
+      // Email failed but we still return success for security
+    }
 
     res.json({ 
       success: true, 
