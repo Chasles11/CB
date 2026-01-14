@@ -688,6 +688,67 @@ app.post('/admin/create-license', async (req, res) => {
   }
 });
 
+// Admin endpoints
+app.get('/api/admin/user-by-email', async (req, res) => {
+  try {
+    const { email } = req.query;
+    
+    if (!email) {
+      return res.status(400).json({ message: 'Email required' });
+    }
+
+    const userResult = await pool.query(
+      'SELECT id FROM users WHERE email = $1',
+      [email.toLowerCase()]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ 
+      success: true, 
+      user_id: userResult.rows[0].id 
+    });
+  } catch (err) {
+    console.error('Get user error:', err);
+    res.status(500).json({ message: 'Failed to get user' });
+  }
+});
+
+app.post('/api/admin/create-license', async (req, res) => {
+  try {
+    const { user_id, platform, account_number, broker, expires_in_days } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({ message: 'User ID required' });
+    }
+
+    const licenseKey = generateLicenseKey();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + (expires_in_days || 365));
+
+    const status = 'active';
+    
+    await pool.query(
+      `INSERT INTO licenses (license_key, user_id, status, platform, account_number, broker, expires_at, bound_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [licenseKey, user_id, status, platform || 'MT5', account_number || null, broker || null, expiresAt, account_number ? new Date() : null]
+    );
+
+    res.json({ 
+      success: true, 
+      license_key: licenseKey,
+      user_id: user_id,
+      platform: platform || 'MT5',
+      expires_at: expiresAt
+    });
+  } catch (err) {
+    console.error('Admin create license error:', err);
+    res.status(500).json({ message: 'Failed to create license' });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
