@@ -15,7 +15,8 @@ const cors = require('cors');
 app.use(cors({
   origin: [
     'https://illustrious-figolla-65c203.netlify.app',
-    'https://wondrous-llama-6502de.netlify.app',  // New Netlify URL
+    'https://wondrous-llama-6502de.netlify.app',
+    'https://portal.mychallengebuddy.com',  // Your custom domain
     'http://localhost:3000',
     'http://localhost:5000',
     /\.netlify\.app$/  // Allow all Netlify domains
