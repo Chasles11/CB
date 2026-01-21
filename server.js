@@ -371,10 +371,13 @@ app.post('/api/validate', apiLimiter, async (req, res) => {
   try {
     const { license_key, account_number, platform, broker } = req.body;
 
+    // Log the request for debugging
+    console.log('Validation request:', { license_key, account_number, platform, broker });
+
     if (!license_key || !account_number || !platform) {
       return res.status(400).json({ 
         valid: false, 
-        message: 'Missing required parameters' 
+        message: 'Missing required parameters (license_key, account_number, platform)' 
       });
     }
 
@@ -384,6 +387,7 @@ app.post('/api/validate', apiLimiter, async (req, res) => {
     );
 
     if (result.rows.length === 0) {
+      console.log('License not found:', license_key.toUpperCase());
       return res.json({ 
         valid: false, 
         message: 'Invalid license key' 
@@ -391,6 +395,7 @@ app.post('/api/validate', apiLimiter, async (req, res) => {
     }
 
     const license = result.rows[0];
+    console.log('License found:', license);
 
     if (license.expires_at && new Date(license.expires_at) < new Date()) {
       return res.json({ 
@@ -406,13 +411,14 @@ app.post('/api/validate', apiLimiter, async (req, res) => {
       });
     }
 
+    // First time binding - no account number set yet
     if (!license.account_number) {
       await pool.query(
         `UPDATE licenses 
          SET platform = $1, account_number = $2, broker = $3, 
              bound_at = CURRENT_TIMESTAMP, last_validated = CURRENT_TIMESTAMP
          WHERE license_key = $4`,
-        [platform, account_number, broker, license_key.toUpperCase()]
+        [platform, account_number, broker || null, license_key.toUpperCase()]
       );
 
       await pool.query(
@@ -421,6 +427,8 @@ app.post('/api/validate', apiLimiter, async (req, res) => {
         [license_key.toUpperCase(), platform, account_number, req.ip]
       );
 
+      console.log('License bound successfully to account:', account_number);
+
       return res.json({ 
         valid: true, 
         message: 'License activated successfully',
@@ -428,11 +436,14 @@ app.post('/api/validate', apiLimiter, async (req, res) => {
       });
     }
 
+    // Validation - check if same account
     if (license.platform === platform && license.account_number === account_number) {
       await pool.query(
         'UPDATE licenses SET last_validated = CURRENT_TIMESTAMP WHERE license_key = $1',
         [license_key.toUpperCase()]
       );
+
+      console.log('License validated successfully');
 
       return res.json({ 
         valid: true, 
@@ -441,6 +452,9 @@ app.post('/api/validate', apiLimiter, async (req, res) => {
       });
     }
 
+    // Different account - reject
+    console.log('Account mismatch:', { expected: license.account_number, received: account_number });
+    
     return res.json({ 
       valid: false, 
       message: `License is bound to ${license.platform} account ${license.account_number}` 
