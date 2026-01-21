@@ -689,6 +689,86 @@ app.post('/admin/create-license', async (req, res) => {
 });
 
 // Admin endpoints
+app.get('/api/admin/all-users', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, email, name, created_at FROM users ORDER BY created_at DESC'
+    );
+
+    res.json({ 
+      success: true, 
+      users: result.rows 
+    });
+  } catch (err) {
+    console.error('Get all users error:', err);
+    res.status(500).json({ message: 'Failed to get users' });
+  }
+});
+
+app.get('/api/admin/all-licenses', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT l.*, u.email as user_email 
+       FROM licenses l
+       LEFT JOIN users u ON l.user_id = u.id
+       ORDER BY l.created_at DESC`
+    );
+
+    res.json({ 
+      success: true, 
+      licenses: result.rows 
+    });
+  } catch (err) {
+    console.error('Get all licenses error:', err);
+    res.status(500).json({ message: 'Failed to get licenses' });
+  }
+});
+
+app.post('/api/admin/deactivate-license', async (req, res) => {
+  try {
+    const { license_key } = req.body;
+
+    if (!license_key) {
+      return res.status(400).json({ message: 'License key required' });
+    }
+
+    await pool.query(
+      'UPDATE licenses SET status = $1 WHERE license_key = $2',
+      ['inactive', license_key.toUpperCase()]
+    );
+
+    res.json({ 
+      success: true, 
+      message: 'License deactivated' 
+    });
+  } catch (err) {
+    console.error('Deactivate license error:', err);
+    res.status(500).json({ message: 'Failed to deactivate license' });
+  }
+});
+
+app.post('/api/admin/activate-license', async (req, res) => {
+  try {
+    const { license_key } = req.body;
+
+    if (!license_key) {
+      return res.status(400).json({ message: 'License key required' });
+    }
+
+    await pool.query(
+      'UPDATE licenses SET status = $1 WHERE license_key = $2',
+      ['active', license_key.toUpperCase()]
+    );
+
+    res.json({ 
+      success: true, 
+      message: 'License activated' });
+  } catch (err) {
+    console.error('Activate license error:', err);
+    res.status(500).json({ message: 'Failed to activate license' });
+  }
+});
+
 app.get('/api/admin/user-by-email', async (req, res) => {
   try {
     const { email } = req.query;
