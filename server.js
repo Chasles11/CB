@@ -71,7 +71,7 @@ function generateLicenseKey() {
 }
 
 function generateToken(userId) {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' }); // Increased to 30 days
 }
 
 function verifyToken(token) {
@@ -87,12 +87,14 @@ function authenticateToken(req, res, next) {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
+    console.log('No token provided');
+    return res.status(401).json({ message: 'Access token required' });
   }
 
   const decoded = verifyToken(token);
   if (!decoded) {
-    return res.status(403).json({ error: 'Invalid or expired token' });
+    console.log('Invalid token');
+    return res.status(403).json({ message: 'Invalid or expired token' });
   }
 
   req.userId = decoded.userId;
