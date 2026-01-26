@@ -785,6 +785,49 @@ app.post('/api/admin/activate-license', async (req, res) => {
   }
 });
 
+// Admin endpoint to update user email
+app.post('/api/admin/update-user-email', async (req, res) => {
+  try {
+    const { user_id, new_email } = req.body;
+
+    if (!user_id || !new_email) {
+      return res.status(400).json({ message: 'User ID and new email required' });
+    }
+
+    // Check if email is valid format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(new_email)) {
+      return res.status(400).json({ message: 'Invalid email format' });
+    }
+
+    // Check if email already exists for another user
+    const existingUser = await pool.query(
+      'SELECT id FROM users WHERE email = $1 AND id != $2',
+      [new_email.toLowerCase(), user_id]
+    );
+
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ message: 'Email already in use by another user' });
+    }
+
+    // Update the email
+    await pool.query(
+      'UPDATE users SET email = $1 WHERE id = $2',
+      [new_email.toLowerCase(), user_id]
+    );
+
+    console.log(`User ${user_id} email updated to ${new_email}`);
+
+    res.json({ 
+      success: true, 
+      message: 'Email updated successfully' 
+    });
+  } catch (err) {
+    console.error('Update email error:', err);
+    res.status(500).json({ message: 'Failed to update email' });
+  }
+});
+
 app.get('/api/admin/user-by-email', async (req, res) => {
   try {
     const { email } = req.query;
