@@ -26,15 +26,40 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use(express.json());
-
-// Trust proxy - required for Railway/production
-app.set('trust proxy', 1);
-
+// Database connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
+
+// Auto-migrate: Create shopify_orders table if it doesn't exist
+pool.query(`
+  CREATE TABLE IF NOT EXISTS shopify_orders (
+    id SERIAL PRIMARY KEY,
+    order_id VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    licenses_created INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_shopify_orders_email ON shopify_orders(email);
+  CREATE INDEX IF NOT EXISTS idx_shopify_orders_created_at ON shopify_orders(created_at);
+`).then(() => {
+  console.log('✅ Database migration: shopify_orders table ready');
+}).catch(err => {
+  console.error('⚠️ Database migration warning:', err.message);
+});
+
+// ⚠️ IMPORTANT: Shopify webhook setup MUST come BEFORE express.json()
+// This is required for webhook signature verification
+const { setupShopifyWebhook } = require('./shopify-webhook-routes');
+setupShopifyWebhook(app, pool);
+
+// NOW we can use the normal JSON parser for other routes
+app.use(express.json());
+
+// Trust proxy - required for Railway/production
+app.set('trust proxy', 1);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const UNBIND_COOLDOWN_MINUTES = 5;
@@ -857,22 +882,19 @@ app.get('/api/admin/user-by-email', async (req, res) => {
 
 app.post('/api/admin/create-license', async (req, res) => {
   try {
-    const { user_id, platform, account_number, broker, expires_in_days } = req.body;
+    const { user_id, platform, account_number, broker } = req.body;
 
     if (!user_id) {
       return res.status(400).json({ message: 'User ID required' });
     }
 
     const licenseKey = generateLicenseKey();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + (expires_in_days || 365));
-
     const status = 'active';
     
     await pool.query(
       `INSERT INTO licenses (license_key, user_id, status, platform, account_number, broker, expires_at, bound_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [licenseKey, user_id, status, platform || 'MT5', account_number || null, broker || null, expiresAt, account_number ? new Date() : null]
+       VALUES ($1, $2, $3, $4, $5, $6, NULL, $7)`,
+      [licenseKey, user_id, status, platform || 'MT5', account_number || null, broker || null, account_number ? new Date() : null]
     );
 
     res.json({ 
@@ -880,7 +902,7 @@ app.post('/api/admin/create-license', async (req, res) => {
       license_key: licenseKey,
       user_id: user_id,
       platform: platform || 'MT5',
-      expires_at: expiresAt
+      expires_at: null
     });
   } catch (err) {
     console.error('Admin create license error:', err);
