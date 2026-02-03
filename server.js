@@ -72,7 +72,7 @@ if (!process.env.RESEND_API_KEY) {
 }
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://wondrous-llama-6502de.netlify.app';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://portal.mychallengebuddy.com';
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
