@@ -199,7 +199,7 @@ async function handleShopifyOrderPaid(req, res, pool) {
       const hashedPassword = await bcrypt.hash(password, 10);
 
       const userResult = await pool.query(
-        'INSERT INTO users (email, password, name, created_at) VALUES ($1, $2, $3, NOW()) RETURNING id',
+        'INSERT INTO users (email, password_hash, name, created_at) VALUES ($1, $2, $3, NOW()) RETURNING id',
         [customerEmail.toLowerCase(), hashedPassword, customerName]
       );
       
@@ -218,8 +218,8 @@ async function handleShopifyOrderPaid(req, res, pool) {
       
       await pool.query(
         `INSERT INTO licenses 
-         (user_id, license_key, status, created_at, expires_at) 
-         VALUES ($1, $2, 'active', NOW(), NULL)`,
+         (user_id, license_key, status, platform, created_at, expires_at) 
+         VALUES ($1, $2, 'active', 'MT5', NOW(), NULL)`,
         [userId, licenseKey]
       );
       
