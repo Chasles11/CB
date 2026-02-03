@@ -306,7 +306,7 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
     
     try {
       await resend.emails.send({
-        from: 'ChallengeBuddy <onboarding@resend.dev>',
+        from: 'ChallengeBuddy <noreply@mychallengebuddy.com>',
         to: user.email,
         subject: 'Reset Your ChallengeBuddy Password',
         html: `
