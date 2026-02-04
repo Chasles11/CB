@@ -936,9 +936,6 @@ app.post('/api/admin/create-license', async (req, res) => {
       product_type: product_type || 'challengebuddy',
       expires_at: null
     });
-      platform: platform || 'MT5',
-      expires_at: null
-    });
   } catch (err) {
     console.error('Admin create license error:', err);
     res.status(500).json({ message: 'Failed to create license' });
