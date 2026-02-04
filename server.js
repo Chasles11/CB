@@ -56,9 +56,17 @@ pool.query(`
   
   -- Create index for faster queries
   CREATE INDEX IF NOT EXISTS idx_licenses_product_type ON licenses(product_type);
+  
+  -- Create email rate limiting table for password resets
+  CREATE TABLE IF NOT EXISTS email_rate_limits (
+    email VARCHAR(255) PRIMARY KEY,
+    reset_count INTEGER DEFAULT 0,
+    last_reset TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
 `).then(() => {
   console.log('✅ Database migration: shopify_orders table ready');
   console.log('✅ Database migration: product_type column ready');
+  console.log('✅ Database migration: email_rate_limits table ready');
 }).catch(err => {
   console.error('⚠️ Database migration warning:', err.message);
 });
@@ -286,6 +294,40 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
 
     if (!email) {
       return res.status(400).json({ message: 'Email required' });
+    }
+
+    // Check email-specific rate limit (3 resets per 24 hours)
+    const rateLimitCheck = await pool.query(
+      `SELECT reset_count, last_reset FROM email_rate_limits WHERE email = $1`,
+      [email.toLowerCase()]
+    );
+
+    if (rateLimitCheck.rows.length > 0) {
+      const { reset_count, last_reset } = rateLimitCheck.rows[0];
+      const hoursSinceLastReset = (Date.now() - new Date(last_reset)) / (1000 * 60 * 60);
+      
+      // Reset counter if 24 hours passed
+      if (hoursSinceLastReset >= 24) {
+        await pool.query(
+          `UPDATE email_rate_limits SET reset_count = 1, last_reset = NOW() WHERE email = $1`,
+          [email.toLowerCase()]
+        );
+      } else if (reset_count >= 3) {
+        console.log(`❌ Password reset rate limit hit for: ${email}`);
+        return res.status(429).json({ 
+          message: 'Too many password reset requests. Please try again in 24 hours.' 
+        });
+      } else {
+        await pool.query(
+          `UPDATE email_rate_limits SET reset_count = reset_count + 1 WHERE email = $1`,
+          [email.toLowerCase()]
+        );
+      }
+    } else {
+      await pool.query(
+        `INSERT INTO email_rate_limits (email, reset_count, last_reset) VALUES ($1, 1, NOW())`,
+        [email.toLowerCase()]
+      );
     }
 
     const userResult = await pool.query(
