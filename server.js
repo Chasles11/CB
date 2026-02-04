@@ -44,8 +44,21 @@ pool.query(`
   
   CREATE INDEX IF NOT EXISTS idx_shopify_orders_email ON shopify_orders(email);
   CREATE INDEX IF NOT EXISTS idx_shopify_orders_created_at ON shopify_orders(created_at);
+  
+  -- Add product_type column to licenses table if it doesn't exist
+  ALTER TABLE licenses 
+  ADD COLUMN IF NOT EXISTS product_type VARCHAR(50) DEFAULT 'challengebuddy';
+  
+  -- Update existing licenses to have product_type
+  UPDATE licenses 
+  SET product_type = 'challengebuddy' 
+  WHERE product_type IS NULL;
+  
+  -- Create index for faster queries
+  CREATE INDEX IF NOT EXISTS idx_licenses_product_type ON licenses(product_type);
 `).then(() => {
   console.log('✅ Database migration: shopify_orders table ready');
+  console.log('✅ Database migration: product_type column ready');
 }).catch(err => {
   console.error('⚠️ Database migration warning:', err.message);
 });
@@ -396,10 +409,10 @@ app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
 
 app.post('/api/validate', apiLimiter, async (req, res) => {
   try {
-    const { license_key, account_number, platform, broker } = req.body;
+    const { license_key, account_number, platform, broker, product_type } = req.body;
 
     // Log the request for debugging
-    console.log('Validation request:', { license_key, account_number, platform, broker });
+    console.log('Validation request:', { license_key, account_number, platform, broker, product_type });
 
     if (!license_key || !account_number || !platform) {
       return res.status(400).json({ 
@@ -423,6 +436,15 @@ app.post('/api/validate', apiLimiter, async (req, res) => {
 
     const license = result.rows[0];
     console.log('License found:', license);
+
+    // Check if product_type matches (if provided by EA)
+    if (product_type && license.product_type && product_type !== license.product_type) {
+      console.log('Product type mismatch:', { expected: license.product_type, received: product_type });
+      return res.json({ 
+        valid: false, 
+        message: `This license is for ${license.product_type}, not ${product_type}` 
+      });
+    }
 
     if (license.expires_at && new Date(license.expires_at) < new Date()) {
       return res.json({ 
@@ -882,7 +904,7 @@ app.get('/api/admin/user-by-email', async (req, res) => {
 
 app.post('/api/admin/create-license', async (req, res) => {
   try {
-    const { user_id, platform, account_number, broker } = req.body;
+    const { user_id, platform, product_type, account_number, broker } = req.body;
 
     if (!user_id) {
       return res.status(400).json({ message: 'User ID required' });
@@ -892,15 +914,28 @@ app.post('/api/admin/create-license', async (req, res) => {
     const status = 'active';
     
     await pool.query(
-      `INSERT INTO licenses (license_key, user_id, status, platform, account_number, broker, expires_at, bound_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NULL, $7)`,
-      [licenseKey, user_id, status, platform || 'MT5', account_number || null, broker || null, account_number ? new Date() : null]
+      `INSERT INTO licenses (license_key, user_id, status, platform, product_type, account_number, broker, expires_at, bound_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8)`,
+      [
+        licenseKey, 
+        user_id, 
+        status, 
+        platform || 'MT5', 
+        product_type || 'challengebuddy',
+        account_number || null, 
+        broker || null, 
+        account_number ? new Date() : null
+      ]
     );
 
     res.json({ 
       success: true, 
       license_key: licenseKey,
       user_id: user_id,
+      platform: platform || 'MT5',
+      product_type: product_type || 'challengebuddy',
+      expires_at: null
+    });
       platform: platform || 'MT5',
       expires_at: null
     });

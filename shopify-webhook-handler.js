@@ -52,87 +52,104 @@ function generateLicenseKey() {
 
 /**
  * Send license email via Resend
+ * @param {string} email - Customer email
+ * @param {string} firstName - Customer first name
+ * @param {object} licensesByProduct - Object with product types as keys and license arrays as values
+ * @param {string} password - Generated password (if new account)
+ * @param {boolean} isNewAccount - Whether this is a new account
  */
-async function sendLicenseEmail(email, firstName, licenses, password, isNewAccount) {
-  const licenseList = licenses.map((lic, idx) => `🔑 License Key ${idx + 1}: ${lic}`).join('\n');
+async function sendLicenseEmail(email, firstName, licensesByProduct, password, isNewAccount) {
+  // Product name mapping for display
+  const productNames = {
+    challengebuddy: 'ChallengeBuddy',
+    reaction_zones: 'CB Reaction Zones',
+    cb_combo: 'CB Combo'
+  };
+
+  // Count total licenses
+  const totalLicenses = Object.values(licensesByProduct).flat().length;
   
   const subject = isNewAccount 
-    ? 'Your myChallengeBuddy License Keys 🎉'
-    : 'New myChallengeBuddy License Keys Added 🎉';
-  
-  const loginSection = isNewAccount 
-    ? `
----
+    ? 'Your ChallengeBuddy License Keys 🎉'
+    : 'New ChallengeBuddy License Keys Added 🎉';
 
-ACCESS YOUR PORTAL:
-👉 https://portal.mychallengebuddy.com
-
-Email: ${email}
-Password: ${password}
-
-💡 Tip: You can change your password anytime in Account Settings.
-`
-    : `
----
-
-ACCESS YOUR PORTAL:
-👉 https://portal.mychallengebuddy.com
-
-Your new licenses have been added to your existing account.
-`;
+  // Generate HTML for licenses grouped by product
+  let licensesHtml = '';
+  for (const [productType, licenses] of Object.entries(licensesByProduct)) {
+    const productName = productNames[productType] || productType;
+    licensesHtml += `
+      <div style="margin-bottom: 25px;">
+        <h4 style="color: #1877f2; margin-bottom: 12px;">📦 ${productName} (${licenses.length} ${licenses.length === 1 ? 'license' : 'licenses'})</h4>
+        ${licenses.map((lic, idx) => `
+          <div style="margin: 10px 0; padding: 10px; background: white; border-left: 3px solid #1877f2; border-radius: 4px;">
+            🔑 <strong>License ${idx + 1}:</strong><br>
+            <code style="background: #f5f5f5; padding: 8px 12px; border-radius: 4px; font-size: 16px; letter-spacing: 1px; display: inline-block; margin-top: 5px;">${lic}</code>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <h2>Hi ${firstName || 'there'},</h2>
+      <h2 style="color: #1877f2;">Hi ${firstName || 'there'},</h2>
       
-      <p>Thank you for your purchase! Your ${licenses.length} license key${licenses.length > 1 ? 's are' : ' is'} ready:</p>
+      <p>Thank you for your purchase! Your ${totalLicenses} license key${totalLicenses > 1 ? 's are' : ' is'} ready:</p>
       
-      <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-        ${licenses.map((lic, idx) => `<div style="margin: 10px 0;">🔑 <strong>License Key ${idx + 1}:</strong> <code style="background: white; padding: 5px 10px; border-radius: 3px;">${lic}</code></div>`).join('')}
+      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        ${licensesHtml}
       </div>
       
       ${isNewAccount ? `
-      <div style="background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0;">
-        <h3 style="margin-top: 0;">🌐 ACCESS YOUR PORTAL:</h3>
-        <p><strong>URL:</strong> <a href="https://portal.mychallengebuddy.com">portal.mychallengebuddy.com</a></p>
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Password:</strong> <code style="background: white; padding: 5px 10px; border-radius: 3px;">${password}</code></p>
-        <p style="font-size: 14px; color: #666;">💡 Tip: You can change your password anytime in Account Settings.</p>
+      <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h3 style="margin-top: 0; color: #1877f2;">🌐 ACCESS YOUR PORTAL</h3>
+        <p style="margin: 10px 0;"><strong>URL:</strong> <a href="https://portal.mychallengebuddy.com" style="color: #1877f2;">portal.mychallengebuddy.com</a></p>
+        <p style="margin: 10px 0;"><strong>Email:</strong> ${email}</p>
+        <p style="margin: 10px 0;"><strong>Password:</strong> <code style="background: white; padding: 5px 10px; border-radius: 4px;">${password}</code></p>
+        <p style="font-size: 14px; color: #666; margin-top: 15px;">💡 Tip: You can change your password anytime in Account Settings.</p>
       </div>
       ` : `
-      <div style="background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0;">
-        <h3 style="margin-top: 0;">🌐 ACCESS YOUR PORTAL:</h3>
-        <p><strong>URL:</strong> <a href="https://portal.mychallengebuddy.com">portal.mychallengebuddy.com</a></p>
+      <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h3 style="margin-top: 0; color: #1877f2;">🌐 ACCESS YOUR PORTAL</h3>
+        <p><strong>URL:</strong> <a href="https://portal.mychallengebuddy.com" style="color: #1877f2;">portal.mychallengebuddy.com</a></p>
         <p>Your new licenses have been added to your existing account.</p>
       </div>
       `}
       
-      <div style="margin-top: 30px;">
-        <h3>📋 NEXT STEPS:</h3>
-        <ol>
+      <div style="margin-top: 30px; background-color: #f8f9fa; padding: 20px; border-radius: 8px;">
+        <h3 style="margin-top: 0; color: #1877f2;">📋 NEXT STEPS</h3>
+        <ol style="padding-left: 20px; line-height: 1.8;">
           <li>Log in to your portal</li>
+          <li>View your active licenses</li>
           <li>Download the EA (Expert Advisor)</li>
           <li>Bind your licenses to your trading accounts</li>
         </ol>
       </div>
       
-      <p style="margin-top: 30px; color: #666;">Need help? Just reply to this email.</p>
+      <p style="margin-top: 30px; color: #666; font-size: 14px;">Need help? Just reply to this email and we'll assist you!</p>
       
-      <p style="margin-top: 20px;">Happy trading!<br><strong>- The myChallengeBuddy Team</strong></p>
+      <p style="margin-top: 30px; font-size: 16px;">
+        Happy trading!<br>
+        <strong style="color: #1877f2;">- The ChallengeBuddy Team</strong>
+      </p>
+      
+      <hr style="margin: 30px 0; border: none; border-top: 1px solid #e0e0e0;">
+      <p style="color: #999; font-size: 12px; text-align: center;">ChallengeBuddy - Professional Trading License Management</p>
     </div>
   `;
 
   try {
     const result = await resend.emails.send({
-      from: 'myChallengeBuddy <noreply@mychallengebuddy.com>',
+      from: 'ChallengeBuddy <noreply@mychallengebuddy.com>',
       to: email,
       subject: subject,
       html: htmlContent,
     });
     
+    console.log('✅ License email sent successfully to:', email);
     return result;
   } catch (error) {
-    console.error('Error sending license email:', error);
+    console.error('❌ Error sending license email:', error);
     throw error;
   }
 }
@@ -165,21 +182,57 @@ async function handleShopifyOrderPaid(req, res, pool) {
       return res.status(400).json({ error: 'No customer email found' });
     }
 
-    // Count "myChallengeBuddy" products in order
+    // Detect products and count licenses
     let totalLicenses = 0;
+    let productType = 'challengebuddy'; // Default product type
+    const productsFound = [];
+    
     for (const item of order.line_items) {
-      if (item.title === 'myChallengeBuddy' || item.name === 'myChallengeBuddy') {
-        // Each product = 2 licenses, multiply by quantity
-        totalLicenses += item.quantity * 2;
+      const itemTitle = (item.title || item.name || '').toLowerCase();
+      let licensesForItem = 0;
+      let detectedProductType = null;
+      
+      // ChallengeBuddy (main product)
+      if (itemTitle.includes('challengebuddy') || itemTitle.includes('my challenge buddy')) {
+        licensesForItem = item.quantity * 2;
+        detectedProductType = 'challengebuddy';
+        console.log(`  ✅ Found: ${item.quantity}x "${item.title}" → ${licensesForItem} licenses (ChallengeBuddy)`);
+      }
+      // CB Reaction Zones
+      else if (itemTitle.includes('reaction zones') || itemTitle.includes('reaction zone')) {
+        licensesForItem = item.quantity * 2;
+        detectedProductType = 'reaction_zones';
+        console.log(`  ✅ Found: ${item.quantity}x "${item.title}" → ${licensesForItem} licenses (Reaction Zones)`);
+      }
+      // CB Combo
+      else if (itemTitle.includes('combo') || itemTitle.includes('cb combo')) {
+        licensesForItem = item.quantity * 3; // Combo includes 3 licenses
+        detectedProductType = 'cb_combo';
+        console.log(`  ✅ Found: ${item.quantity}x "${item.title}" → ${licensesForItem} licenses (CB Combo)`);
+      }
+      
+      if (licensesForItem > 0 && detectedProductType) {
+        totalLicenses += licensesForItem;
+        productsFound.push({
+          type: detectedProductType,
+          quantity: item.quantity,
+          licenses: licensesForItem,
+          title: item.title
+        });
+        // Use the first product type as default for single-product orders
+        if (productsFound.length === 1) {
+          productType = detectedProductType;
+        }
       }
     }
 
     if (totalLicenses === 0) {
-      console.log('No myChallengeBuddy products in order');
+      console.log('ℹ️ No ChallengeBuddy products in order');
       return res.status(200).json({ message: 'No licenses to create' });
     }
 
-    console.log(`Creating ${totalLicenses} licenses for ${customerEmail}`);
+    console.log(`🔑 Creating ${totalLicenses} licenses for ${customerEmail}`);
+    console.log(`📦 Products found:`, productsFound);
 
     // Check if user exists
     const userCheck = await pool.query(
@@ -211,32 +264,40 @@ async function handleShopifyOrderPaid(req, res, pool) {
       console.log('Existing user ID:', userId);
     }
 
-    // Generate licenses (never expire)
-    const licenses = [];
-    for (let i = 0; i < totalLicenses; i++) {
-      const licenseKey = generateLicenseKey();
+    // Generate licenses (never expire) grouped by product
+    const licensesByProduct = {};
+    
+    for (const product of productsFound) {
+      licensesByProduct[product.type] = [];
       
-      await pool.query(
-        `INSERT INTO licenses 
-         (user_id, license_key, status, platform, created_at, expires_at) 
-         VALUES ($1, $2, 'active', 'MT5', NOW(), NULL)`,
-        [userId, licenseKey]
-      );
-      
-      licenses.push(licenseKey);
-      console.log(`Created license: ${licenseKey}`);
+      for (let i = 0; i < product.licenses; i++) {
+        const licenseKey = generateLicenseKey();
+        
+        await pool.query(
+          `INSERT INTO licenses 
+           (user_id, license_key, status, platform, product_type, created_at, expires_at) 
+           VALUES ($1, $2, 'active', 'MT5', $3, NOW(), NULL)`,
+          [userId, licenseKey, product.type]
+        );
+        
+        licensesByProduct[product.type].push(licenseKey);
+        console.log(`  🔑 Created ${product.type} license: ${licenseKey}`);
+      }
     }
+
+    // Flatten all licenses for email
+    const allLicenses = Object.values(licensesByProduct).flat();
 
     // Send email
     await sendLicenseEmail(
       customerEmail,
       customerFirstName,
-      licenses,
+      licensesByProduct,
       password,
       isNewAccount
     );
 
-    console.log('License email sent successfully');
+    console.log('✅ License email sent successfully');
 
     // Log the order in database (optional tracking)
     await pool.query(
