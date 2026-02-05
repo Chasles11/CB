@@ -128,6 +128,67 @@ function verifyToken(token) {
   }
 }
 
+// Cloudflare Turnstile CAPTCHA verification
+const TURNSTILE_SECRET_KEY = '0x4AAAAAACXzS2dSebRYVbvT2h_jy0lD4hI';
+
+async function verifyCaptcha(token) {
+  if (!token) {
+    return false;
+  }
+
+  try {
+    const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: TURNSTILE_SECRET_KEY,
+        response: token
+      })
+    });
+
+    const data = await response.json();
+    console.log('🔐 CAPTCHA verification:', data.success ? '✅ Passed' : '❌ Failed');
+    return data.success;
+  } catch (error) {
+    console.error('❌ CAPTCHA verification error:', error);
+    return false;
+  }
+}
+
+// Verify Cloudflare Turnstile CAPTCHA
+async function verifyCaptcha(token) {
+  if (!token) {
+    return false;
+  }
+
+  const secretKey = process.env.TURNSTILE_SECRET_KEY;
+  
+  if (!secretKey) {
+    console.error('❌ TURNSTILE_SECRET_KEY not set in environment variables');
+    return false; // Fail open in development, but log the error
+  }
+
+  try {
+    const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        secret: secretKey,
+        response: token,
+      }),
+    });
+
+    const data = await response.json();
+    console.log('CAPTCHA verification result:', data.success ? '✅ Valid' : '❌ Invalid');
+    return data.success;
+  } catch (error) {
+    console.error('CAPTCHA verification error:', error);
+    return false;
+  }
+}
+
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -210,7 +271,7 @@ async function initializeDatabase() {
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, captchaToken } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password required' });
@@ -218,6 +279,13 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     if (password.length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    // Verify CAPTCHA
+    const captchaValid = await verifyCaptcha(captchaToken);
+    if (!captchaValid) {
+      console.log('❌ Registration blocked: Invalid CAPTCHA');
+      return res.status(400).json({ message: 'CAPTCHA verification failed. Please try again.' });
     }
 
     const existingUser = await pool.query(
@@ -238,6 +306,8 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     const user = result.rows[0];
     const token = generateToken(user.id);
+
+    console.log('✅ New user registered:', email);
 
     res.json({
       success: true,
@@ -290,10 +360,17 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 // Forgot Password - Send reset email
 app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, captchaToken } = req.body;
 
     if (!email) {
       return res.status(400).json({ message: 'Email required' });
+    }
+
+    // Verify CAPTCHA
+    const captchaValid = await verifyCaptcha(captchaToken);
+    if (!captchaValid) {
+      console.log('❌ Password reset blocked: Invalid CAPTCHA');
+      return res.status(400).json({ message: 'CAPTCHA verification failed. Please try again.' });
     }
 
     // Check email-specific rate limit (3 resets per 24 hours)
