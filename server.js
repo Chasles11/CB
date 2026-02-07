@@ -640,7 +640,7 @@ app.post('/api/validate', apiLimiter, async (req, res) => {
 app.get('/api/licenses/user/:userId', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT license_key, status, platform, account_number as bound_account, broker, 
+      `SELECT license_key, status, platform, product_type, account_number as bound_account, broker, 
               bound_at, last_validated, expires_at, created_at,
               CASE WHEN status = 'active' THEN true ELSE false END as is_active
        FROM licenses 
