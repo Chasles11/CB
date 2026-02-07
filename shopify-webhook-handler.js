@@ -62,7 +62,7 @@ async function sendLicenseEmail(email, firstName, licensesByProduct, password, i
   // Product name mapping for display
   const productNames = {
     challengebuddy: 'ChallengeBuddy',
-    reaction_zones: 'CB Reaction Zones',
+    reaction_zones: 'CB Reaction Level',
     cb_combo: 'CB Combo'
   };
 
@@ -198,11 +198,11 @@ async function handleShopifyOrderPaid(req, res, pool) {
         detectedProductType = 'challengebuddy';
         console.log(`  ✅ Found: ${item.quantity}x "${item.title}" → ${licensesForItem} licenses (ChallengeBuddy)`);
       }
-      // CB Reaction Zones
-      else if (itemTitle.includes('reaction zones') || itemTitle.includes('reaction zone')) {
+      // CB Reaction Level (formerly Reaction Zones)
+      else if (itemTitle.includes('reaction level') || itemTitle.includes('reaction zone') || itemTitle.includes('reaction zones')) {
         licensesForItem = item.quantity * 2;
         detectedProductType = 'reaction_zones';
-        console.log(`  ✅ Found: ${item.quantity}x "${item.title}" → ${licensesForItem} licenses (Reaction Zones)`);
+        console.log(`  ✅ Found: ${item.quantity}x "${item.title}" → ${licensesForItem} licenses (Reaction Level)`);
       }
       // CB Combo
       else if (itemTitle.includes('combo') || itemTitle.includes('cb combo')) {
