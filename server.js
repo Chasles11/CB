@@ -63,10 +63,40 @@ pool.query(`
     reset_count INTEGER DEFAULT 0,
     last_reset TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
+  
+  -- Create CB Reaction Level offline licenses pool
+  CREATE TABLE IF NOT EXISTS cb_reaction_level_licenses (
+    id SERIAL PRIMARY KEY,
+    license_key VARCHAR(20) UNIQUE NOT NULL,
+    times_distributed INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_cb_licenses_key ON cb_reaction_level_licenses(license_key);
 `).then(() => {
   console.log('✅ Database migration: shopify_orders table ready');
   console.log('✅ Database migration: product_type column ready');
   console.log('✅ Database migration: email_rate_limits table ready');
+  console.log('✅ Database migration: cb_reaction_level_licenses table ready');
+  
+  // Populate CB Reaction Level licenses if table is empty
+  return pool.query('SELECT COUNT(*) FROM cb_reaction_level_licenses');
+}).then(result => {
+  const count = parseInt(result.rows[0].count);
+  if (count === 0) {
+    console.log('📝 Populating CB Reaction Level licenses...');
+    const licenses = require('./cb-reaction-level-licenses');
+    const values = licenses.map(lic => `('${lic}')`).join(',');
+    return pool.query(`
+      INSERT INTO cb_reaction_level_licenses (license_key)
+      VALUES ${values}
+      ON CONFLICT (license_key) DO NOTHING
+    `);
+  } else {
+    console.log(`✅ CB Reaction Level licenses already populated (${count} licenses)`);
+  }
+}).then(() => {
+  console.log('✅ All database migrations completed successfully');
 }).catch(err => {
   console.error('⚠️ Database migration warning:', err.message);
 });

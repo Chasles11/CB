@@ -271,7 +271,36 @@ async function handleShopifyOrderPaid(req, res, pool) {
       licensesByProduct[product.type] = [];
       
       for (let i = 0; i < product.licenses; i++) {
-        const licenseKey = generateLicenseKey();
+        let licenseKey;
+        
+        // CB Reaction Level uses pre-generated offline licenses
+        if (product.type === 'reaction_zones') {
+          // Get a random license from the pool
+          const licenseResult = await pool.query(`
+            SELECT license_key 
+            FROM cb_reaction_level_licenses 
+            ORDER BY RANDOM() 
+            LIMIT 1
+          `);
+          
+          if (licenseResult.rows.length === 0) {
+            throw new Error('No CB Reaction Level licenses available in pool');
+          }
+          
+          licenseKey = licenseResult.rows[0].license_key;
+          
+          // Update distribution counter (for analytics)
+          await pool.query(`
+            UPDATE cb_reaction_level_licenses 
+            SET times_distributed = times_distributed + 1 
+            WHERE license_key = $1
+          `, [licenseKey]);
+          
+          console.log(`  🎲 Selected random CB Reaction Level license: ${licenseKey}`);
+        } else {
+          // ChallengeBuddy and other products generate unique licenses
+          licenseKey = generateLicenseKey();
+        }
         
         await pool.query(
           `INSERT INTO licenses 
