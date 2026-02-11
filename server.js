@@ -1059,7 +1059,40 @@ app.post('/api/admin/create-license', async (req, res) => {
       return res.status(400).json({ message: 'User ID required' });
     }
 
-    const licenseKey = generateLicenseKey();
+    let licenseKey;
+    const finalProductType = product_type || 'challengebuddy';
+    
+    // CB Reaction Level uses pre-generated offline licenses
+    if (finalProductType === 'reaction_zones') {
+      // Get a random license from the pool
+      const licenseResult = await pool.query(`
+        SELECT license_key 
+        FROM cb_reaction_level_licenses 
+        ORDER BY RANDOM() 
+        LIMIT 1
+      `);
+      
+      if (licenseResult.rows.length === 0) {
+        return res.status(500).json({ 
+          message: 'No CB Reaction Level licenses available in pool' 
+        });
+      }
+      
+      licenseKey = licenseResult.rows[0].license_key;
+      
+      // Update distribution counter (for analytics)
+      await pool.query(`
+        UPDATE cb_reaction_level_licenses 
+        SET times_distributed = times_distributed + 1 
+        WHERE license_key = $1
+      `, [licenseKey]);
+      
+      console.log(`Admin: Selected random CB Reaction Level license: ${licenseKey}`);
+    } else {
+      // ChallengeBuddy and other products generate unique licenses
+      licenseKey = generateLicenseKey();
+    }
+
     const status = 'active';
     
     await pool.query(
@@ -1070,7 +1103,7 @@ app.post('/api/admin/create-license', async (req, res) => {
         user_id, 
         status, 
         platform || 'MT5', 
-        product_type || 'challengebuddy',
+        finalProductType,
         account_number || null, 
         broker || null, 
         account_number ? new Date() : null
@@ -1082,7 +1115,7 @@ app.post('/api/admin/create-license', async (req, res) => {
       license_key: licenseKey,
       user_id: user_id,
       platform: platform || 'MT5',
-      product_type: product_type || 'challengebuddy',
+      product_type: finalProductType,
       expires_at: null
     });
   } catch (err) {
