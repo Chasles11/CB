@@ -182,6 +182,19 @@ async function handleShopifyOrderPaid(req, res, pool) {
       return res.status(400).json({ error: 'No customer email found' });
     }
 
+    // Check if this order has already been processed (prevent duplicate webhook processing)
+    const orderCheck = await pool.query(
+      'SELECT id FROM shopify_orders WHERE order_id = $1',
+      [order.id.toString()]
+    );
+    
+    if (orderCheck.rows.length > 0) {
+      console.log(`⚠️ Order ${order.id} already processed - skipping to prevent duplicates`);
+      return res.status(200).json({ message: 'Order already processed' });
+    }
+    
+    console.log(`✅ New order ${order.id} - proceeding with license creation`);
+
     // Detect products and count licenses
     let totalLicenses = 0;
     let productType = 'challengebuddy'; // Default product type

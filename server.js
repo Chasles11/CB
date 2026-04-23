@@ -231,10 +231,12 @@ async function initializeDatabase() {
       );
 
       CREATE TABLE IF NOT EXISTS licenses (
-        license_key VARCHAR(19) PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
+        license_key VARCHAR(19) NOT NULL,
         user_id INTEGER REFERENCES users(id),
         status VARCHAR(20) DEFAULT 'active',
         platform VARCHAR(10),
+        product_type VARCHAR(50),
         account_number VARCHAR(50),
         broker VARCHAR(100),
         bound_at TIMESTAMP,
@@ -273,6 +275,54 @@ async function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS idx_activations_license ON activations(license_key);
       CREATE INDEX IF NOT EXISTS idx_reset_tokens_token ON reset_tokens(token);
     `);
+    
+    // ============================================
+    // MIGRATION: Allow duplicate license keys for offline license pool
+    // ============================================
+    console.log('🔄 Checking if license schema migration is needed...');
+    
+    try {
+      // Check if 'id' column exists in licenses table
+      const columnCheck = await client.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'licenses' AND column_name = 'id'
+      `);
+      
+      if (columnCheck.rows.length === 0) {
+        console.log('🔧 Running migration: Adding id column and changing primary key...');
+        
+        // Step 1: Drop foreign key constraints that reference license_key
+        await client.query(`ALTER TABLE IF EXISTS activations DROP CONSTRAINT IF EXISTS activations_license_key_fkey`);
+        await client.query(`ALTER TABLE IF EXISTS cooldowns DROP CONSTRAINT IF EXISTS cooldowns_license_key_fkey`);
+        
+        // Step 2: Drop existing primary key on license_key
+        await client.query(`ALTER TABLE licenses DROP CONSTRAINT IF EXISTS licenses_pkey`);
+        
+        // Step 3: Add id column as SERIAL
+        await client.query(`ALTER TABLE licenses ADD COLUMN id SERIAL`);
+        
+        // Step 4: Make id the new primary key
+        await client.query(`ALTER TABLE licenses ADD PRIMARY KEY (id)`);
+        
+        // Step 5: Add product_type column if missing
+        await client.query(`ALTER TABLE licenses ADD COLUMN IF NOT EXISTS product_type VARCHAR(50)`);
+        
+        // Step 6: Create index on license_key for faster lookups
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_licenses_key ON licenses(license_key)`);
+        
+        // Step 7: Create index on product_type
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_licenses_product_type ON licenses(product_type)`);
+        
+        console.log('✅ Migration completed! Licenses table now allows duplicate license keys.');
+        console.log('ℹ️  This enables the offline license pool for CB Reaction Level.');
+      } else {
+        console.log('✅ Migration already applied - schema is up to date.');
+      }
+    } catch (migrationError) {
+      console.error('⚠️ Migration error (may be safe to ignore if schema is already correct):', migrationError.message);
+    }
+    
     console.log('Database initialized successfully');
   } finally {
     client.release();
